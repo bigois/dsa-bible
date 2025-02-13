@@ -1,2 +1,2 @@
 # dsa-bible
-Análise Exploratória de Dados Bíblicos através da linguagem R
+Análise exploratória de dados bíblicos através da linguagem R
