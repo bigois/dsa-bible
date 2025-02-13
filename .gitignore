@@ -396,6 +396,10 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# R Studio
+# R Studio files
 .Rproj.user
 dsa-bible.Rproj
+
+# Quarto files
+main.html
+main_files/**
