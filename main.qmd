@@ -1,27 +1,572 @@
 ---
 title: "DSA com a Bíblia"
+subtitle: "Análise exploratória de dados bíblicos através da linguagem R"
+abstract: "Este trabalho apresenta uma análise exploratória de dados bíblicos utilizando a linguagem R, com o objetivo de identificar padrões e insights relevantes sobre os textos sagrados."
+keywords: [Bíblia, R, análise de dados, DSA, exploração de dados]
 author: "Guilherme Bigois"
+date: 2025-02-13
+lang: pt
 format: html
 editor: visual
+toc: true
+number-sections: true
+code-line-numbers: true
+theme:
+  dark: darkly
 ---
 
-## Quarto
+## Introdução
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+Nesta seção descreverei o motivo de criação do projeto, os recursos utilizados e os pré-requisitos técnicos para execução do *script* em ambiente local.
 
-## Running Code
+### Links úteis
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+-   Link do repositório: <https://github.com/bigois/dsa-bible>
+
+-   Meu GitHub: [https://github.com/bigois](https://github.com/bigois/dsa-bible "Perfil do autor no GitHub")
+
+-   Meu LinkedIn: [https://www.linkedin.com/in/bigois](https://www.linkedin.com/in/bigois/ "Perfil do autor no LinkedIn")
+
+### Objetivo
+
+Após a conclusão do curso [R para Data Science: Conhecendo a linguagem](https://www.alura.com.br/curso-online-r-data-science-conhecendo-linguagem "Curso na plataforma Alura") da [Alura](https://www.alura.com.br "Página inicial da Alura"), acredito ser interessante aplicar os conhecimentos obtidos em um projeto completamente apartado.
+
+De maneira sucinta, neste curso aprendemos:
+
+-   Os principais comandos e estruturas de dados do R;
+-   Como utilizar [estruturas condicionais e de repetição](https://www.hashtagtreinamentos.com/condicionais-estruturas-de-repeticao-linguagem-r "Documentação sobre estruturas condicionais");
+-   [Análise exploratória](https://ebaconline.com.br/blog/analise-exploratoria-de-dados-o-que-e "Definição do que é análise exploratória de dados") para responder perguntas sobre os dados;
+-   Criação e manipulação de [vetores](https://livro.curso-r.com/3-6-vetores.html "Documentação sobre vetores"), [matrizes](https://livro.curso-r.com/3-13-outros-t%C3%B3picos.html#matrizes "Artigo explicativo sobre vetores") e [fatores](https://livro.curso-r.com/3-13-outros-t%C3%B3picos.html#fatores "Artigo explicativo sobre fatores") no R.
+
+Desta forma, tentarei replicar todo o conhecimento aprendido nesta análise de base de dados SQLite.
+
+### Por que a Bíblia Sagrada?
+
+Sempre achei interessantes curiosidades bíblicas, tais como, por exemplo, a **quantidade de capítulos dos livros de Provérbios e Eclesiastes**, os quais têm respectivamente **31 e 12 capítulos**.
+
+Olhando assim, até parece que eles foram projetados para serem lidos **um dia por mês** (no caso de Provérbios) e **um mês por ano** (em se tratando de Eclesiastes).
+
+Logo, escolhi uma base de dados que contivesse a Bíblia Sagrada em forma fácil de ser acessada via SQL, contudo essa base só foi possível de ser obtida graças ao usuário do GitHub [damarals (Daniel Amaral)](https://github.com/damarals "Perfil do usuário do GitHub Daniel Amaral"), o qual em seu projeto, disponibiliza diversas traduções da Bíblia nos formatos XML, JSON e SQLite.
+
+Eu escolhi a versão [Almeida Revisada e Corrigida (ARC)](https://pt.wikipedia.org/wiki/Almeida_Revista_e_Corrigida "Definição da tradução ARC na Wikipédia"), devido à sua familiaridade com a minha primeira Bíblia, todavia para acessar outras traduções, acesse este [link](https://github.com/damarals/biblias "Projeto do Daniel Amaral no GitHub").
+
+### Pré-requisitos
+
+Nesta seção listo os arquivos e binários necessários para a execução bem-sucedida do programa.
+
+#### Base de dados
+
+Para execução deste *script* será necessária a existência de uma das traduções da Bíblia em formato .sqlite contidas no projeto acima citado.
+
+As primeiras linhas do *script* irão perguntar pelo caminho do arquivo, porém é possível fixar o caminho diretamente no código através da variável `path`:
 
 ```{r}
-1 + 1
+# path <- file.choose()
+
+# Caso prefira, fixe o caminho para agilizar a execução do script
+path <- "C:\\Users\\bigois\\Documents\\Projetos\\dsa-bible\\data\\ARC.sqlite"
 ```
 
-You can add options to executable code like this
+#### Versão do R
+
+Para este projeto, foi utilizada a versão [4.3.3 (2024-02-29 ucrt)](https://cran.r-project.org/bin/windows/base/old/4.3.3/ "Central para download da versão do R deste projeto") da linguagem R:
 
 ```{r}
-#| echo: false
-2 * 2
+R.version
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+## Carga de dados
+
+Nesta seção, iremos realizar a extração dos dados necessários para nossa análise.
+
+### Instalação de bibliotecas
+
+Para execução deste código, precisaremos das seguintes bibliotecas:
+
+-   [RSQLite](https://rsqlite.r-dbi.org/ "Página do pacote RSQLite"): Conexão em base de dados SQLite;
+-   [glue](https://glue.tidyverse.org/ "Página do pacote glue"): Interpolação de cadeia de caracteres (*string*);
+-   [dplyr](https://dplyr.tidyverse.org/ "Página do pacote dplyr"): Manipulação de transformação de dados.
+
+```{r warning=FALSE, message=FALSE}
+libs <- c("RSQLite", "glue", "dplyr")
+for (lib in libs) {
+  if (!require(lib, quietly = TRUE, character.only = TRUE)) {
+    install.packages(lib)
+    library(lib, character.only = TRUE)
+  }
+}
+```
+
+### Conexão com a base de dados
+
+Para realizar a conexão com a base de dados, utilizaremos as funções `dbConnect` e `SQLite()` para definir o driver e o objeto de conexão:
+
+```{r}
+con <- dbConnect(SQLite(), path)
+tables <- dbListTables(con)
+tables
+```
+
+### Obtendo dados
+
+Inicialmente vamos carregar todos os dados de forma completa em objetos da linguagem R, contudo é importante enfatizar **que muitos dos relacionamentos que faremos através do R, poderiam ser facilmente tratados com comandos SQL**, tais como `JOIN`, `MAX`, `MIN` e `AVG`.
+
+Neste ponto, criaremos um objeto para cada tabela através de criação e atribuição dinâmica de variáveis por meio do uso da função `assign`, contudo para definir as variáveis e criar as consultas SQL, utilizaremos as funções `glue_sql` e `glue` do pacote `glue`:
+
+```{r}
+for (table in tables) {
+  data <- dbGetQuery(con, glue_sql("SELECT * FROM {`table`}", .con = con))
+  assign(glue("db_{table}"), data)
+}
+
+head(db_metadata, 3)
+head(db_testament, 3)
+head(db_book, 3)
+head(db_verse, 3)
+```
+
+### Fechando conexão
+
+Uma vez que os dados necessários já foram obtidos, é uma **boa prática** fechar a conexão com a base de dados:
+
+```{r}
+dbDisconnect(con)
+```
+
+## Tratamento de dados
+
+Dentre as etapas de um [ETL (*Extract*, *Transform*, *Load*)](https://aws.amazon.com/pt/what-is/etl/ "Definição do que é um ETL"), a seção anterior se encaixaria como letra "E" (*extract*), assim como esta seção teria a letra "T" (*transform*) como bem apropriada.
+
+Isto posto, iremos manipular os *data frames* criados de forma a prepará-los para a nossa terceira parte, a análise dos dados:
+
+### Tabela com relacionamentos
+
+Neste ponto, criaremos um objeto chamado `db_full` contendo apenas os dados macro de cada livro da Bíblia, sendo eles:
+
+-   `testament_name`: Título de parte da Bíblia;
+-   `book_name`: Nome do livro;
+-   `total_chapters`: Total de capítulos contidos no livro;
+-   `total_verses`: Total de versículos do livro como um todo;
+-   `total_characters`: Total de caracteres por versículo;
+
+Contudo para que isto seja possível e fácil de realizar, utilizaremos a função `inner_join` da biblioteca `dplyr`:
+
+```{r}
+db_full <- db_testament %>%
+  inner_join(db_book, by = c("id" = "testament_reference_id")) %>%
+  inner_join(db_verse, by = c("book_reference_id" = "book_id"))
+
+head(db_full, 3)
+```
+
+### Renomeando dados
+
+Como pode ser visto no resultado do *chunk* anterior, após o relacionamento das tabelas, as colunas `id` e `name` passaram a se chamar `id.x`, `id.y`, `name.x` e `name.y`, isto posto, iremos alterar o nome dessas colunas por meio da função `rename`, também do pacote `dplyr`:
+
+```{r}
+db_full <- db_full %>%
+  rename(testament_name = name.x) %>%
+  rename(book_name = name.y)
+
+head(db_full, 3)
+```
+
+### Criando novas colunas
+
+Atualmente temos a coluna `text`, a qual contém o texto propriamente dito de cada versículo, contudo para nossa análise, iremos calcular **apenas a quantidade de caracteres contidos em cada versículo** por meio das funções `mutate` (dplyr) e `nchar` (base):
+
+```{r}
+db_full <- db_full %>%
+  mutate(total_characters = nchar(text))
+
+head(db_full, 3)
+```
+
+### Removendo colunas
+
+2/4 do nosso objetivo para esta seção já estão concluídos, pois criamos as colunas `testament_name` e `book_name`, agora só falta criar as colunas `total_chapters` e `total_verses`.
+
+Contudo, temos algumas colunas como `id.x`, `id.y`, `id.y.y` e `book_reference_id` que por momento não iremos utilizar.
+
+Assim sendo, removeremos essas colunas com o uso da função `select` também contida no pacote `dplyr` em conjunto com o operador `-`:
+
+```{r}
+db_full <- db_full %>%
+  select(-id.x, -id.y, -id.y.y, -book_reference_id)
+
+head(db_full, 3)
+```
+
+### Agrupamento e contagem
+
+Agora precisamos **contar os versículos e caracteres por capítulo** e para isso utilizaremos as funções `group_by` e `summarize` e criaremos um objeto chamado `db_by_chapter`:
+
+```{r message=FALSE}
+db_by_chapter <- db_full %>%
+  select(-text) %>%
+  group_by(testament_name, book_name, chapter) %>%
+  summarize(
+    total_verses = n(),
+    total_characters = sum(total_characters)
+  )
+
+head(db_by_chapter, 3)
+```
+
+Uma vez contados os versículos e caracteres por capítulo, agora iremos **somar os capítulos por livro** e atribuí-los ao objeto `db_by_book`:
+
+```{r message=FALSE}
+db_by_book <- db_by_chapter %>%
+  group_by(testament_name, book_name) %>%
+  summarize(
+    total_chapters = n(),
+    total_verses = sum(total_verses),
+    total_characters = sum(total_characters)
+  )
+
+head(db_by_book, 3)
+```
+
+### Remoção de objetos
+
+Atualmente o painel *Environment* do nosso R Studio encontra-se cheio de variáveis sem uso:
+
+![Painel Environment do RStudio com muitas variáveis](images/environment_trash.png){fig-alt="Captura de tela do painel Environment contendo muitas variáveis sem uso" fig-align="left"}
+
+Para mantermos a organização dos nossos objetos, iremos remover aqueles aos quais não mais utilizamos através da função `rm`:
+
+```{r}
+db_by_verse <- db_full
+rm(con, data, db_full, db_metadata, db_testament, db_book, db_verse, lib, libs, path, table, tables)
+```
+
+Desta forma, ficamos com o painel Environment desta forma:
+
+![Painel Environment do RStudio com poucas variáveis](images/environment_clean.png){fig-alt="Captura de tela do painel Environment contendo apenas três variáveis" fig-align="left"}
+
+## Análise de dados
+
+Na última etapa deste projeto, validaremos e analisaremos as informações contidas nos objetos `db_by_book`, `db_by_chapter` e `db_by_verse`.
+
+Toda análise é baseada em **perguntas e constatações por meio de observação**, portanto, responderemos a algumas perguntas formuladas para compreender melhor a base de dados analisada.
+
+### Maiores e menores
+
+Para descobrirmos qual é o maior e o menor livro da Bíblia, devemos entender que **a relação de maior/menor se dá com base no ponto de vista abordado**, pois podemos definir o que é "ser maior" ou "ser menor" de **forma quantitativa com base na quantidade de caracteres, versículos ou capítulos**.
+
+Dito isso, definiremos o tamanho de cada livro com base nos três atributos mencionados acima, utilizando as seguintes colunas:
+
+-   `total_characters` do objeto `db_by_verse`;
+-   `total_verses` do objeto `db_by_chapter`;
+-   `total_chapters` do objeto `db_by_book`.
+
+#### Maior versículo com base na quantidade de caracteres
+
+```{r}
+bigger_verse_by_characters <- which.max(db_by_verse$total_characters)
+db_by_verse[bigger_verse_by_characters, ]
+```
+
+#### Menor versículo com base na quantidade de caracteres
+
+```{r}
+smaller_verse_by_characters <- which.min(db_by_verse$total_characters)
+db_by_verse[smaller_verse_by_characters, ]
+```
+
+#### Maior capítulo com base na quantidade de caracteres
+
+```{r}
+bigger_chapter_by_characters <- which.max(db_by_chapter$total_characters)
+db_by_chapter[bigger_chapter_by_characters, ]
+```
+
+#### Menor capítulo com base na quantidade de caracteres
+
+```{r}
+smaller_chapter_by_characters <- which.min(db_by_chapter$total_characters)
+db_by_chapter[smaller_chapter_by_characters, ]
+```
+
+#### Maior capítulo com base na quantidade de versículos
+
+```{r}
+bigger_chapter_by_verses <- which.max(db_by_chapter$total_verses)
+db_by_chapter[bigger_chapter_by_verses, ]
+```
+
+#### Menor capítulo com base na quantidade de versículos
+
+```{r}
+smaller_chapter_by_verses <- which.min(db_by_chapter$total_verses)
+db_by_chapter[smaller_chapter_by_verses, ]
+```
+
+#### Maior livro com base na quantidade de caracteres
+
+```{r}
+bigger_book_by_characters <- which.max(db_by_book$total_characters)
+db_by_book[bigger_book_by_characters, ]
+```
+
+#### Menor livro com base na quantidade de caracteres
+
+```{r}
+smaller_book_by_characters <- which.min(db_by_book$total_characters)
+db_by_book[smaller_book_by_characters, ]
+```
+
+#### Maior livro com base na quantidade de versículos
+
+```{r}
+bigger_book_by_verses <- which.max(db_by_book$total_verses)
+db_by_book[bigger_book_by_verses, ]
+```
+
+#### Menor livro com base na quantidade de versículos
+
+```{r}
+smaller_book_by_verses <- which.min(db_by_book$total_verses)
+db_by_book[smaller_book_by_verses, ]
+```
+
+#### Maior livro com base na quantidade de capítulos
+
+```{r}
+bigger_book_by_chapters <- which.max(db_by_book$total_chapters)
+db_by_book[bigger_book_by_chapters, ]
+```
+
+#### Menor livro com base na quantidade de capítulos
+
+```{r}
+smaller_book_by_chapters <- which.min(db_by_book$total_chapters)
+db_by_book[smaller_book_by_chapters, ]
+```
+
+#### Compilando resultados {#compilando-resultados}
+
+Agora que capturamos os dados necessários sobre os maior e menores livro da Bíblia, vamos juntá-los em uma matriz que nos permita uma melhor visualização, e será necessário o uso das funções `c` e `matrix`:
+
+```{r}
+bigger_book_names <- c(
+  db_by_book[bigger_book_by_characters, 'book_name'],
+  db_by_book[bigger_book_by_verses, 'book_name'],
+  db_by_book[bigger_book_by_chapters, 'book_name']
+)
+
+bigger_book_totals <- c(
+  db_by_book[bigger_book_by_characters, 'total_characters'],
+  db_by_book[bigger_book_by_verses, 'total_verses'],
+  db_by_book[bigger_book_by_chapters, 'total_chapters']
+)
+
+smaller_book_names <- c(
+  db_by_book[smaller_book_by_characters, 'book_name'],
+  db_by_book[smaller_book_by_verses, 'book_name'],
+  db_by_book[smaller_book_by_chapters, 'book_name']
+)
+
+smaller_book_totals <- c(
+  db_by_book[smaller_book_by_characters, 'total_characters'],
+  db_by_book[smaller_book_by_verses, 'total_verses'],
+  db_by_book[smaller_book_by_chapters, 'total_chapters']
+)
+
+bigger_books <- matrix(c(bigger_book_names, bigger_book_totals), ncol = 2, nrow = 3)
+smaller_books <- matrix(c(smaller_book_names, smaller_book_totals), ncol = 2, nrow = 3)
+```
+
+Agora vamos nomear as linhas e colunas das matrizes criadas de forma que nos permita uma melhor compreensão dos dados compilados, e para isto usaremos as funções `rownames` e `colnames`:
+
+```{r}
+size_rownames <- c("Caracteres", "Versículos", "Capítulos")
+size_colnames <- c("Livro", "Total")
+
+rownames(bigger_books) <- size_rownames
+rownames(smaller_books) <- size_rownames
+
+colnames(bigger_books) <- size_colnames
+colnames(smaller_books) <- size_colnames
+
+rm(bigger_book_names, bigger_book_totals, smaller_book_names, smaller_book_totals)
+```
+
+Por fim teremos os maiores livro da Bíblia separados por categoria:
+
+```{r}
+# Maiores livros com base na quantidade de caracteres, versículos e capítulos
+bigger_books
+```
+
+Assim como também os menores:
+
+```{r}
+# Menores livros com base na quantidade de caracteres, versículos e capítulos
+smaller_books
+```
+
+### Médias e medianas
+
+A análise e comparação dos valores de média e mediana permitem **evitar interpretações equivocadas**, pois diferentemente da média, a **mediana ignora as metades superior e inferior**, descartando assim valores **muito discrepantes e extremos** que estejam influenciando na média.
+
+Para ilustrar a compreensão da importância da análise de medianas, imagine uma pessoa dizendo a frase abaixo:
+
+> "Minha empresa é um ótimo lugar para se trabalhar. Lá a média salarial é de 6 mil reais!"
+
+Contudo, para ilustrar a falácia acima apresentada, definimos o seguinte cenário:
+
+```{r}
+salary_boss <- 20000
+salary_coordinator <- 10000
+salary_employee_1 <- 1500
+salary_employee_2 <- 1500
+salary_employee_3 <- 1500
+salary_employee_4 <- 1500
+
+company_salary <- c(salary_boss, salary_coordinator, salary_employee_1, salary_employee_2, salary_employee_3, salary_employee_4)
+
+salary_mean <- round(mean(company_salary))
+salary_median <- round(median(company_salary))
+salary_diff <- round(abs(salary_mean - salary_median))
+
+paste(glue('Média: {salary_mean} | Mediana: {salary_median} | Diferença: {salary_diff}'))
+```
+
+------------------------------------------------------------------------
+
+Viu como números não mentem, mas mentirosos usam números para mentir? 😂
+
+No caso acima a média permite que os salários do chefe (`salary_boss)` e do coordenador (`salary_coordinator`) **influenciem a média final**, **enviezando a análise** com uma ideia de que a faixa salarial é alta para todos, contudo, **a mediana nos mostra que isso não é verdade**.
+
+Com isso em mente, seguimos com nossa análise baseada na Bíblia...
+
+#### Caracteres por versículo
+
+```{r}
+mean_characters_by_verse <- round(mean(db_by_verse[, "total_characters"]))
+median_characters_by_verse <- round(median(db_by_verse[, "total_characters"]))
+diff_characters_by_verse <- round(abs(mean_characters_by_verse - median_characters_by_verse))
+
+paste(glue('Média: {mean_characters_by_verse} | Mediana: {median_characters_by_verse} | Diferença: {diff_characters_by_verse}'))
+```
+
+#### Caracteres por capítulo
+
+```{r}
+mean_characters_by_chapter <- round(mean(db_by_chapter[["total_characters"]]))
+median_characters_by_chapter <- round(median(db_by_chapter[["total_characters"]]))
+diff_characters_by_chapter <- round(abs(mean_characters_by_chapter - median_characters_by_chapter))
+
+paste(glue('Média: {mean_characters_by_chapter} | Mediana: {median_characters_by_chapter} | Diferença: {diff_characters_by_chapter}'))
+```
+
+#### Caracteres por livro
+
+```{r}
+mean_characters_by_book <- round(mean(db_by_book[["total_characters"]]))
+median_characters_by_book <- round(median(db_by_book[["total_characters"]]))
+diff_characters_by_book <- round(abs(mean_characters_by_book - median_characters_by_book))
+
+paste(glue('Média: {mean_characters_by_book} | Mediana: {median_characters_by_book} | Diferença: {diff_characters_by_book}'))
+```
+
+#### Versículos por capítulo
+
+```{r}
+mean_verses_by_chapter <- round(mean(db_by_chapter[["total_verses"]]))
+median_verses_by_chapter <- round(median(db_by_chapter[["total_verses"]]))
+diff_verses_by_chapter <- round(abs(mean_verses_by_chapter - median_verses_by_chapter))
+
+paste(glue('Média: {mean_verses_by_chapter} | Mediana: {median_verses_by_chapter} | Diferença: {diff_verses_by_chapter}'))
+```
+
+#### Versículos por livro
+
+```{r}
+mean_verses_by_book <- round(mean(db_by_book[["total_verses"]]))
+median_verses_by_book <- round(median(db_by_book[["total_verses"]]))
+diff_verses_by_book <- round(abs(mean_verses_by_book - median_verses_by_book))
+
+paste(glue('Média: {mean_verses_by_book} | Mediana: {median_verses_by_book} | Diferença: {diff_verses_by_book}'))
+```
+
+#### Capítulos por livro
+
+```{r}
+mean_chapters_by_book <- round(mean(db_by_book[["total_chapters"]]))
+median_chapters_by_book <- round(median(db_by_book[["total_chapters"]]))
+diff_chapters_by_book <- round(abs(mean_chapters_by_book - median_chapters_by_book))
+
+paste(glue('Média: {mean_chapters_by_book} | Mediana: {median_chapters_by_book} | Diferença: {diff_chapters_by_book}'))
+```
+
+#### Compilando resultados
+
+Assim como fizemos na [seção anterior](#compilando-resultados "Seção "Compilando resultados" de máximos e mínmos"), vamos formatar os dados obtidos de uma a permitir uma melhor visualização:
+
+```{r}
+mean_median_matriz <- matrix(c(
+  mean_characters_by_verse,
+  median_characters_by_verse,
+  diff_characters_by_verse,
+  mean_characters_by_chapter,
+  median_characters_by_chapter,
+  diff_characters_by_chapter,
+  mean_characters_by_book,
+  median_characters_by_book,
+  diff_characters_by_book,
+  mean_verses_by_chapter  ,
+  median_verses_by_chapter  ,
+  diff_verses_by_chapter,
+  mean_verses_by_book,
+  median_verses_by_book,
+  diff_verses_by_book,
+  mean_chapters_by_book,
+  median_chapters_by_book,
+  diff_chapters_by_book
+), ncol = 3, byrow = TRUE)
+
+colnames(mean_median_matriz) <- c("Média", "Mediana", "Diferença")
+rownames(mean_median_matriz) <- c(
+  'Caracteres por versículo',
+  'Caracteres por capítulo',
+  'Caracteres por livro',
+  'Versículos por capítulo',
+  'Versículos por livro',
+  'Capítulos por livro'
+)
+
+mean_median_matriz
+```
+
+Agora filtraremos apenas indicadores que tenham o valor intermediário (desvio) entre média e mediana menor que 10%:
+
+```{r}
+less_than_10 <- mean_median_matriz[, 'Diferença'] / ((mean_median_matriz[, 'Média'] + mean_median_matriz[, 'Mediana']) / 2) * 100 < 10
+mean_median_matriz[less_than_10, ]
+```
+
+Esta matriz nos permite inferir que na Bíblia temos um valor intermediário comum para caracteres por versículo (133) e capítulo (3103), assim como versículos por capítulo (25).
+
+### Conclusão {#conclusão}
+
+Após a obtenção de tantos dados, conseguimos chegar as seguintes conclusões:
+
+1.  O maior livro da Bíblia é o livro de Salmos do `r db_by_book %>% filter(book_name == "Salmos") %>% pull(testament_name)`, tendo `r db_by_book %>% filter(book_name == "Salmos") %>% pull(total_characters)` caracteres, `r db_by_book %>% filter(book_name == "Salmos") %>% pull(total_verses)` versículos e `r db_by_book %>% filter(book_name == "Salmos") %>% pull(total_chapters)` capítulos;
+2.  O menor livro da da Bíblia em quantidade de caracteres é o livro de `r db_by_book[smaller_book_by_characters, ]$book_name` do `r db_by_book[smaller_book_by_characters, ]$testament_name`, com um total de `r db_by_book[smaller_book_by_characters, ]$total_characters` caracteres;
+3.  O menor livro da da Bíblia em quantidade de versículos é o livro de `r db_by_book[smaller_book_by_verses, ]$book_name` do `r db_by_book[smaller_book_by_verses, ]$testament_name`, com um total de `r db_by_book[smaller_book_by_verses, ]$total_verses` caracteres;
+4.  O menor livro da da Bíblia em quantidade de capítulos é o livro de `r db_by_book[smaller_book_by_chapters, ]$book_name` do `r db_by_book[smaller_book_by_chapters, ]$testament_name`, com um total de `r db_by_book[smaller_book_by_chapters, ]$total_chapters` caracteres;
+5.  O menor versículo da Bíblia tem `r db_by_verse[smaller_verse_by_characters, ]$total_characters` caracteres e fica no livro de `r db_by_verse[smaller_verse_by_characters, ]$book_name` no `r db_by_verse[smaller_verse_by_characters, ]$testament_name`;
+6.  O maior versículo da Bíblia tem `r db_by_verse[bigger_verse_by_characters, ]$total_characters` caracteres e fica no livro de `r db_by_verse[bigger_verse_by_characters, ]$book_name` no `r db_by_verse[bigger_verse_by_characters, ]$testament_name`;
+7.  A Bíblia tem um total de `r db_by_book %>% nrow()` livros, sendo `r db_by_book %>% filter(testament_name == 'Novo Testamento') %>% nrow()` (`r round(db_by_book %>% filter(testament_name == 'Novo Testamento') %>% nrow() / db_by_book %>% nrow() * 100)`%) do Antigo Testamento e `r db_by_book %>% filter(testament_name == 'Antigo Testamento') %>% nrow()` do Novo Testamento (`r round(db_by_book %>% filter(testament_name == 'Antigo Testamento') %>% nrow() / db_by_book %>% nrow() * 100)`%).
+
+### Ponto de atenção
+
+️Os dados que você leu na seção [Conclusão](#conclusão "Âncora para a seção Conclusão") foram escritos utilizando *inline code*, isto posto, caso você avalie o script do projeto no GitHub, verá que os dados não estão fixados no código, mas sim obtidos através de variáveis capturadas anteriormente:
+
+![Inline-code para código incorporado ao texto](images/inline_code.png){fig-alt="Seção Conclusão escrita com código incorporado ao texto"}
+
+### Observações finais
+
+Espero que este projeto possa ser útil tanto para aqueles que desejam explorar dados ou aprender mais sobre a Bíblia, quanto para quem busca aprimorar seus conhecimentos em R.
