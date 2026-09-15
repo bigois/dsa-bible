@@ -83,4 +83,4 @@ The project uses the ARC translation distributed by [damarals/biblias](https://g
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](https://github.com/bigois/dsa-bible/blob/main/LICENSE).
